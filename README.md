@@ -7,7 +7,7 @@ A minimized tool (web application) for DNA sequence analysis. This single web pa
 Features
 
 - Upload and convert ab1 format file to FASTA format
-- Show DNA sequence and its chromatograph
+- Show DNA sequence and its chromatogram
 - Generate its protein sequences with 3 reading frames
 - Provide manual correction of sequence errors
 - Identify and highlight sequence domains
