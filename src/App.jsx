@@ -265,7 +265,7 @@ export default function App() {
 
                     {/* STEP 3: VISUALIZATION */}
                     <Card
-                        title="3. DNA Sequence & Chromatograph"
+                        title="3. DNA Sequence & Chromatogram"
                         icon={Activity}
                         status={fileData ? 'completed' : 'pending'}
                     >
