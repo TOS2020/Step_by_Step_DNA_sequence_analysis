@@ -13,7 +13,8 @@ Features
 - Identify and highlight sequence domains
 - Annotation and export the results
 ---
-
+A new version upgrades chromatogram and motif analysis features.
+---
 Link to the deployed site:
 
 https://tos2020.github.io/Step_by_Step_DNA_sequence_analysis/
