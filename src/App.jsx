@@ -20,7 +20,7 @@ import { parseAB1, toFasta, translate, findMotifs } from './utils/dnaUtils';
 import Chromatogram from './Chromatogram';
 import { toJpeg } from 'html-to-image';
 
-const AnnotationHighlight = ({ sequence, annotations }) => {
+const AnnotationHighlight = ({ sequence, annotations, labelPrefix = '' }) => {
     if (!annotations.length) return <span className="break-all">{sequence}</span>;
 
     // Find all matches for all annotations
@@ -41,7 +41,7 @@ const AnnotationHighlight = ({ sequence, annotations }) => {
                 if (match.index > lastIdx) {
                     nextSegments.push({ text: seg.text.slice(lastIdx, match.index), isMatch: false, label: null });
                 }
-                nextSegments.push({ text: match[0], isMatch: true, label: ann.name });
+                nextSegments.push({ text: match[0], isMatch: true, label: ann.name, color: ann.color });
                 lastIdx = regex.lastIndex;
             }
             if (lastIdx < seg.text.length) {
@@ -59,8 +59,8 @@ const AnnotationHighlight = ({ sequence, annotations }) => {
                     className={seg.isMatch ? "text-red-600 font-extrabold px-1 bg-red-50 rounded-md relative flex flex-col items-center group mb-2 border border-red-100" : "text-gray-700"}
                 >
                     {seg.isMatch && (
-                        <span className="text-[9px] font-black bg-red-600 text-white px-1.5 py-0.5 rounded-t-sm shadow-sm absolute -top-[1.1rem] left-0 right-0 text-center truncate pointer-events-none">
-                            {seg.label}
+                        <span className="text-[9px] font-black text-white px-1.5 py-0.5 rounded-t-sm shadow-sm absolute -top-[1.1rem] left-0 right-0 text-center truncate pointer-events-none" style={{ backgroundColor: seg.color || '#dc2626' }}>
+                            {labelPrefix}{seg.label}
                         </span>
                     )}
                     {seg.text}
@@ -105,6 +105,10 @@ export default function App() {
     const [zoomLevel, setZoomLevel] = useState(1);
     const [selectedFrame, setSelectedFrame] = useState(0);
     const [searchQuery, setSearchQuery] = useState('');
+    const [motifInput, setMotifInput] = useState('');
+    const [motifColor, setMotifColor] = useState('#dc2626');
+    const [searchMode, setSearchMode] = useState('dna');
+    const [annotationZoom, setAnnotationZoom] = useState(1);
     const [findQuery, setFindQuery] = useState('');
     const [replaceQuery, setReplaceQuery] = useState('');
     const [annotations, setAnnotations] = useState([]);
@@ -150,8 +154,9 @@ export default function App() {
     }, [editedSequence, selectedFrame]);
 
     const searchResults = useMemo(() => {
-        return findMotifs(editedSequence, searchQuery);
-    }, [editedSequence, searchQuery]);
+        const target = searchMode === 'protein' ? protein : editedSequence;
+        return findMotifs(target, searchQuery);
+    }, [editedSequence, protein, searchQuery, searchMode]);
 
     const handleExportJpg = async () => {
         const node = document.getElementById('annotation-step-card');
@@ -182,8 +187,10 @@ export default function App() {
     };
 
     const handleSearchReplace = () => {
-        if (!findQuery) return;
-        const newSeq = editedSequence.split(findQuery.toUpperCase()).join(replaceQuery.toUpperCase());
+        const find = findQuery.replace(/\s+/g, '').toUpperCase();
+        const replace = replaceQuery.replace(/\s+/g, '').toUpperCase();
+        if (!find) return;
+        const newSeq = editedSequence.split(find).join(replace);
         setEditedSequence(newSeq);
         setFindQuery('');
         setReplaceQuery('');
@@ -282,14 +289,14 @@ export default function App() {
                                             <ChevronLeft className="w-5 h-5" />
                                         </button>
                                         <button
-                                            onClick={() => setViewWindow(viewWindow + 50)}
+                                            onClick={() => setViewWindow(Math.min(Math.max(0, fileData.sequence.length - 1), viewWindow + 50))}
                                             className="p-1 hover:bg-white rounded shadow-sm"
                                         >
                                             <ChevronRight className="w-5 h-5" />
                                         </button>
                                     </div>
                                     <span className="text-xs font-bold text-gray-500 uppercase tracking-widest">
-                                        Position: {viewWindow} bp
+                                        Position: {Math.min(viewWindow + 1, fileData.sequence.length)} bp
                                     </span>
                                     <div className="flex gap-2">
                                         <button
@@ -298,6 +305,13 @@ export default function App() {
                                             title="Zoom In"
                                         >
                                             <ZoomIn className="w-5 h-5" />
+                                        </button>
+                                        <button
+                                            onClick={() => { setViewWindow(0); setZoomLevel(1); }}
+                                            className="px-2 py-1 text-[10px] font-bold text-gray-500 hover:bg-white rounded shadow-sm"
+                                            title="Reset chromatogram view"
+                                        >
+                                            Reset
                                         </button>
                                         <button
                                             onClick={() => setZoomLevel(Math.max(1, zoomLevel - 0.5))}
@@ -309,17 +323,22 @@ export default function App() {
                                     </div>
                                 </div>
                                 <Chromatogram data={fileData} start={viewWindow * 10} length={1000} zoom={zoomLevel} />
-                                <div className="flex flex-wrap gap-1 mt-2 font-mono text-sm justify-center">
-                                    {editedSequence.slice(viewWindow, viewWindow + Math.floor(40 / zoomLevel)).split('').map((base, i) => (
-                                        <span key={i} className={`w-5 h-7 flex items-center justify-center rounded text-xs transition-colors ${base === 'A' ? 'bg-green-100 text-green-800' :
-                                            base === 'T' ? 'bg-red-100 text-red-800' :
-                                                base === 'C' ? 'bg-blue-100 text-blue-800' :
-                                                    'bg-gray-100 text-gray-800'
-                                            }`}>
-                                            {base}
-                                        </span>
-                                    ))}
-                                    <span className="flex items-center text-gray-400 px-2 italic">...</span>
+                                <div className="mt-2 overflow-x-auto rounded-lg border border-slate-200 bg-white p-3 shadow-inner">
+                                    <div className="flex min-w-max justify-center gap-1 font-mono">
+                                        {fileData.sequence.slice(viewWindow, viewWindow + Math.floor(40 / zoomLevel)).split('').map((base, i) => {
+                                            const position = viewWindow + i + 1;
+                                            const color = base === 'A' ? 'text-green-700 border-green-300 bg-green-50' : base === 'T' ? 'text-red-700 border-red-300 bg-red-50' : base === 'C' ? 'text-blue-700 border-blue-300 bg-blue-50' : 'text-slate-700 border-slate-300 bg-slate-50';
+                                            return (
+                                                <div key={`${position}-${i}`} className="w-7 text-center">
+                                                    <div className="mb-1 text-[9px] text-slate-400">{position}</div>
+                                                    <span className={`mx-auto flex h-7 w-7 items-center justify-center rounded-full border-2 text-xs font-bold ${color}`} title={`Nucleotide ${position}`}>
+                                                        {base}
+                                                    </span>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                    <div className="mt-2 text-center text-[10px] font-semibold uppercase tracking-wider text-slate-400">Nucleotide position (1-based)</div>
                                 </div>
 
                                 {/* PERSISTENT HIGHLIGHTS PREVIEW */}
@@ -327,7 +346,7 @@ export default function App() {
                                     <div className="p-3 bg-white border border-dashed border-red-200 rounded-lg mt-4 shadow-sm">
                                         <p className="text-[10px] font-bold text-red-400 uppercase tracking-widest mb-2">Annotated Domains</p>
                                         <div className="max-h-24 overflow-y-auto text-xs font-mono leading-relaxed">
-                                            <AnnotationHighlight sequence={editedSequence} annotations={annotations} />
+                                            <AnnotationHighlight labelPrefix="Nucleotides coding for " sequence={editedSequence} annotations={searchQuery && searchMode === 'dna' ? [...annotations, { name: 'MOTIF', query: searchQuery, color: motifColor }] : annotations} />
                                         </div>
                                     </div>
                                 )}
@@ -397,7 +416,7 @@ export default function App() {
                                             <input
                                                 type="text"
                                                 value={findQuery}
-                                                onChange={(e) => setFindQuery(e.target.value)}
+                                                onChange={(e) => setFindQuery(e.target.value.replace(/\s+/g, '').toUpperCase())}
                                                 placeholder="Find motif..."
                                                 className="w-full pl-3 pr-3 py-2 bg-white border-2 border-transparent focus:border-blue-400 transition-all outline-none uppercase font-mono rounded-lg text-sm"
                                             />
@@ -406,7 +425,7 @@ export default function App() {
                                             <input
                                                 type="text"
                                                 value={replaceQuery}
-                                                onChange={(e) => setReplaceQuery(e.target.value)}
+                                                onChange={(e) => setReplaceQuery(e.target.value.replace(/\s+/g, '').toUpperCase())}
                                                 placeholder="Replace with..."
                                                 className="w-full pl-3 pr-3 py-2 bg-white border-2 border-transparent focus:border-blue-400 transition-all outline-none uppercase font-mono rounded-lg text-sm"
                                             />
@@ -489,28 +508,44 @@ export default function App() {
                                     <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-1">Motif Search Query</span>
                                     <div className="relative">
                                         <Search className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
+                                        <select value={searchMode} onChange={(e) => setSearchMode(e.target.value)} className="absolute right-2 top-2 rounded-md border border-gray-200 bg-white px-2 py-1 text-xs font-bold text-gray-600">
+                                            <option value="dna">DNA</option><option value="protein">Amino acid</option>
+                                        </select>
                                         <input
                                             type="text"
-                                            value={searchQuery}
-                                            onChange={(e) => setSearchQuery(e.target.value)}
+                                            value={motifInput}
+                                            onChange={(e) => setMotifInput(e.target.value.replace(/\s+/g, '').toUpperCase())}
                                             placeholder="Search motif (e.g. GAATTC)..."
                                             className="w-full pl-10 pr-4 py-3 bg-gray-50 border-2 border-transparent focus:border-blue-500 transition-all outline-none uppercase font-mono rounded-lg"
                                         />
+                                        <button onClick={() => setSearchQuery(motifInput)} className="mt-2 w-full rounded-lg bg-blue-600 py-2 text-sm font-bold text-white hover:bg-blue-700">Search motif</button>
+                                        {motifInput.length > 1 && (
+                                            <div className="mt-3 rounded-lg border border-blue-100 bg-blue-50 p-3">
+                                                <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-blue-500">Live match preview</p>
+                                                <div className="max-h-24 overflow-y-auto font-mono text-xs">
+                                                    <AnnotationHighlight sequence={searchMode === 'protein' ? protein : editedSequence} annotations={[{ name: 'MATCH', query: motifInput, color: motifColor }]} />
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
 
                                 {/* BOX 2: SEQUENCE DISPLAY (Corrected DNA + AA) */}
                                 <div id="comparison-box" className="grid grid-cols-1 gap-4 p-6 bg-gray-100 rounded-xl shadow-inner border-2 border-gray-200 overflow-hidden">
+                                    <div className="flex justify-end gap-2">
+                                        <button onClick={() => setAnnotationZoom(z => Math.max(0.8, z - 0.2))} className="rounded bg-white px-3 py-1 text-xs font-bold text-blue-600 shadow">− Zoom out</button>
+                                        <button onClick={() => setAnnotationZoom(z => Math.min(2, z + 0.2))} className="rounded bg-white px-3 py-1 text-xs font-bold text-blue-600 shadow">＋ Zoom in</button>
+                                    </div>
                                     <div>
                                         <div className="flex justify-between items-center mb-1">
-                                            <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest">Corrected DNA Sequence</span>
+                                            <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest">Corrected DNA Sequence{annotations.length > 0 ? ` — Coding for ${annotations.map(a => a.name || 'Untitled Domain').join(', ')}` : ''}</span>
                                             <div className="flex gap-1">
                                                 <div className="w-2 h-2 rounded-full bg-blue-500" />
                                                 <div className="w-2 h-2 rounded-full bg-blue-300" />
                                             </div>
                                         </div>
-                                        <div className="text-xs font-mono text-gray-800 p-3 bg-white border border-gray-200 rounded-lg max-h-48 overflow-y-auto shadow-sm">
-                                            <AnnotationHighlight sequence={editedSequence} annotations={annotations} />
+                                        <div style={{ fontSize: `${0.75 * annotationZoom}rem` }} className="font-mono text-gray-800 p-3 bg-white border border-gray-200 rounded-lg max-h-48 overflow-y-auto shadow-sm">
+                                            <AnnotationHighlight labelPrefix="Nucleotides coding for " sequence={editedSequence} annotations={annotations} />
                                         </div>
                                     </div>
                                     <div className="border-t-2 border-dashed border-gray-300 pt-4">
@@ -521,8 +556,8 @@ export default function App() {
                                                 <div className="w-2 h-2 rounded-full bg-green-300" />
                                             </div>
                                         </div>
-                                        <div className="text-xs font-mono text-gray-800 p-3 bg-white border border-gray-200 rounded-lg max-h-32 overflow-y-auto shadow-sm">
-                                            <AnnotationHighlight sequence={protein} annotations={annotations.map(a => ({ ...a, query: translate(a.query) }))} />
+                                        <div style={{ fontSize: `${0.75 * annotationZoom}rem` }} className="font-mono text-gray-800 p-3 bg-white border border-gray-200 rounded-lg max-h-32 overflow-y-auto shadow-sm">
+                                            <AnnotationHighlight sequence={protein} annotations={(searchQuery ? [...annotations, { name: 'MOTIF', query: searchMode === 'protein' ? searchQuery : translate(searchQuery), color: motifColor, mode: 'protein' }] : annotations).map(a => ({ ...a, query: a.mode === 'protein' ? a.query : translate(a.query) }))} />
                                         </div>
                                     </div>
                                 </div>
@@ -532,6 +567,7 @@ export default function App() {
                                     <div className="p-4 bg-blue-600 rounded-xl shadow-lg flex flex-col gap-3">
                                         <span className="text-[10px] font-black text-blue-100 uppercase tracking-widest">New Annotation Details</span>
                                         <div className="flex gap-2">
+                                            <input type="color" value={motifColor} onChange={(e) => setMotifColor(e.target.value)} className="h-10 w-12 rounded-lg border-0" title="Motif color" />
                                             <input
                                                 type="text"
                                                 placeholder="Enter Domain Name (e.g. Promoter A)"
@@ -545,7 +581,9 @@ export default function App() {
                                                         id: Date.now(),
                                                         name: nameInput.value || 'Untitled Domain',
                                                         query: searchQuery,
-                                                        count: searchResults.length
+                                                        mode: searchMode,
+                                                        count: searchResults.length,
+                                                        color: motifColor
                                                     };
                                                     setAnnotations([...annotations, newAnn]);
                                                     setSearchQuery('');
@@ -590,7 +628,7 @@ export default function App() {
                             <div className="flex flex-col gap-3">
                                 <button
                                     onClick={() => {
-                                        const newAnn = { id: Date.now(), query: searchQuery, count: searchResults.length };
+                                        const newAnn = { id: Date.now(), query: searchQuery, count: searchResults.length, color: motifColor, mode: searchMode };
                                         setAnnotations([...annotations, newAnn]);
                                         setSearchQuery('');
                                     }}
@@ -609,7 +647,7 @@ export default function App() {
                                             className="flex items-center justify-between p-3 bg-white border border-gray-100 rounded-lg shadow-sm"
                                         >
                                             <div className="flex items-center gap-3">
-                                                <div className="w-3 h-3 rounded-full bg-blue-500 shadow-sm shadow-blue-200" />
+                                                <div className="w-3 h-3 rounded-full shadow-sm" style={{ backgroundColor: ann.color || '#3b82f6' }} />
                                                 <div className="flex flex-col">
                                                     <span className="text-sm font-extrabold text-blue-900">{ann.name}</span>
                                                     <div className="flex items-center gap-2">

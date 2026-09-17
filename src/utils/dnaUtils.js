@@ -57,7 +57,15 @@ export function parseAB1(arrayBuffer) {
     let sequence = pbas ? decodeString(pbas.rawData).replace(/\x00/g, '').trim() : '';
 
     const ploc = findTag('PLOC', 1);
-    let peakLocations = ploc ? new Uint16Array(ploc.rawData.slice(0, Math.floor(ploc.rawData.byteLength / 2) * 2)) : new Uint16Array(0);
+    // ABIF numeric values are stored big-endian. TypedArray decoding would use
+    // the machine's native endianness and silently scramble positions/signals.
+    const decodeUint16BE = (data) => {
+        const out = new Uint16Array(Math.floor(data.byteLength / 2));
+        const dv = new DataView(data);
+        for (let i = 0; i < out.length; i++) out[i] = dv.getUint16(i * 2, false);
+        return out;
+    };
+    let peakLocations = ploc ? decodeUint16BE(ploc.rawData) : new Uint16Array(0);
 
     const pqual = findTag('PQUAL', 1);
     let qualities = pqual ? new Uint8Array(pqual.rawData) : new Uint8Array(0);
@@ -76,7 +84,7 @@ export function parseAB1(arrayBuffer) {
     dataTags.forEach((tagNum, idx) => {
         const tag = findTag('DATA', tagNum);
         if (tag) {
-            traces[baseOrder[idx]] = new Uint16Array(tag.rawData.slice(0, Math.floor(tag.rawData.byteLength / 2) * 2));
+            traces[baseOrder[idx]] = decodeUint16BE(tag.rawData);
         }
     });
 

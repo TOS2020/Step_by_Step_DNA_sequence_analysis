@@ -34,24 +34,20 @@ export default function Chromatogram({ data, start = 0, length = 100, zoom = 1 }
         };
 
         const viewLength = Math.max(10, Math.floor(length / zoom));
-        const RFU_THRESHOLD = 50; // Baseline noise reduction
-
-        // 1. DYNAMIC SCALING: Find max value in visible window to auto-scale height
-        let globalMax = 200; // Minimum default max
+        // Preserve the raw instrument signal for an accurate chromatogram.
+        let globalMax = 200;
         Object.keys(data.traces).forEach(base => {
             const visibleSlice = data.traces[base].slice(start, start + viewLength);
             const sliceMax = Math.max(...visibleSlice);
             if (sliceMax > globalMax) globalMax = sliceMax;
         });
 
-        // Subtract threshold from globalMax for the scale max
-        const scaleMax = Math.max(100, globalMax - RFU_THRESHOLD);
+        const scaleMax = Math.max(100, globalMax * 1.08);
 
         const datasets = Object.keys(data.traces).map(base => {
             const traceData = data.traces[base];
             const sampledData = Array.from(traceData.slice(start, start + viewLength)).map(val => {
-                // Professional Noise Filtering: Subtract baseline and floor at zero
-                return Math.max(0, val - RFU_THRESHOLD);
+                return val;
             });
 
             return {
@@ -60,7 +56,7 @@ export default function Chromatogram({ data, start = 0, length = 100, zoom = 1 }
                 borderColor: colors[base] || '#ccc',
                 borderWidth: 1.2, // Slightly thinner for "sharper" look
                 pointRadius: 0,
-                tension: 0.5, // High anti-aliasing/smoothing for professional curves
+                tension: 0, // Do not reshape peaks; connect the sampled instrument points directly
                 fill: false,
                 spanGaps: true
             };
@@ -88,7 +84,7 @@ export default function Chromatogram({ data, start = 0, length = 100, zoom = 1 }
             }
         },
         scales: {
-            x: { display: false },
+            x: { display: false, min: 0, max: Math.max(1, (chartData?.labels?.length || 2) - 1) },
             y: {
                 display: false,
                 min: 0,
@@ -104,6 +100,10 @@ export default function Chromatogram({ data, start = 0, length = 100, zoom = 1 }
                     const ctx = chart.ctx;
                     const meta = chart.getDatasetMeta(0);
                     if (!meta) return;
+
+                    // Keep the trace area clean; positions are shown in the
+                    // numbered sequence strip below the chromatogram.
+                    return;
 
                     const peakData = data.peakLocations;
                     const sequence = data.sequence;
@@ -121,7 +121,6 @@ export default function Chromatogram({ data, start = 0, length = 100, zoom = 1 }
 
                     const viewLength = Math.max(10, Math.floor(length / zoom));
                     const rulerY = chart.height - 40;
-                    const baseLabelsY = chart.height - 15;
 
                     // Draw Professional Chromatogram Elements
                     for (let i = 0; i < peakData.length; i++) {
@@ -178,10 +177,8 @@ export default function Chromatogram({ data, start = 0, length = 100, zoom = 1 }
                                 ctx.stroke();
                             }
 
-                            // 4. Base Labels (Professional Monospace alignment)
-                            ctx.font = 'bold 12px "Courier New", monospace';
-                            ctx.fillStyle = colors[base] || '#666';
-                            ctx.fillText(base, x, baseLabelsY);
+                            // Nucleotide letters are rendered in the aligned,
+                            // numbered sequence row below the trace.
                         }
                     }
 
